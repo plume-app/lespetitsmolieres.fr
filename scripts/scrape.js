@@ -260,6 +260,11 @@ async function main() {
     }
     console.log(`    🔗  Found ${links.length} link(s), queue: ${queue.length}`);
 
+    // Remove Framer editor UI elements from the DOM before serializing
+    await page.evaluate(() => {
+      document.getElementById("__framer-editorbar-container")?.remove();
+    });
+
     // Capture fully-rendered HTML and scan for any asset URLs not intercepted
     let html = await page.content();
     for (const match of html.matchAll(HTML_URL_RE)) {
@@ -296,6 +301,39 @@ async function main() {
       console.log("✗");
     }
   }
+
+  // ── Rewrite import paths inside downloaded JS modules ─────────────────────
+  // The .mjs files use relative imports like "./framer.D8flmtA6.mjs", but we
+  // saved them with a domain prefix (e.g. "framerusercontent_co__framer.D8flmtA6.mjs").
+  // Rewrite those bare basenames to their prefixed local filenames.
+  console.log("\n🔁  Rewriting module imports …");
+  const basenameToLocal = new Map();
+  for (const [url, filename] of urlToFilename) {
+    const basename = new URL(url).pathname.split("/").pop();
+    if (basename && basename !== filename) basenameToLocal.set(basename, filename);
+  }
+  let modulesRewritten = 0;
+  for (const filename of urlToFilename.values()) {
+    if (!/\.(mjs|js)$/.test(filename)) continue;
+    const filePath = path.join(ASSETS_DIR, filename);
+    let src;
+    try { src = await fs.readFile(filePath, "utf8"); } catch { continue; }
+    let out = src;
+    // Rewrite absolute CDN URLs that appear inside the module
+    for (const [url, localName] of urlToFilename) {
+      if (out.includes(url)) out = out.replaceAll(url, `./${localName}`);
+    }
+    // Rewrite relative bare-basename imports "./name.hash.mjs" → "./prefixed.mjs"
+    for (const [basename, localName] of basenameToLocal) {
+      out = out.replaceAll(`"./${basename}"`, `"./${localName}"`);
+      out = out.replaceAll(`'./${basename}'`, `'./${localName}'`);
+    }
+    if (out !== src) {
+      await fs.writeFile(filePath, out, "utf8");
+      modulesRewritten++;
+    }
+  }
+  console.log(`    ✅  ${modulesRewritten} module file(s) rewritten.`);
 
   // ── Write HTML pages with rewritten URLs ───────────────────────────────────
   console.log("\n📝  Writing pages …");
