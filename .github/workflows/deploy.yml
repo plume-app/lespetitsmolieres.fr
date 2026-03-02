@@ -1,11 +1,14 @@
-name: Deploy to GitHub Pages
+name: Scrape & Deploy to GitHub Pages
 
 on:
-  # Deploy on every push to main (expects dist/ to be committed)
+  # Run on every push to main
   push:
     branches: [master]
   # Allow manual trigger from the Actions UI
   workflow_dispatch:
+  # Refresh the mirror daily at 03:00 UTC
+  schedule:
+    - cron: "0 3 * * *"
 
 # Grant the workflow write access to push to gh-pages
 permissions:
@@ -14,11 +17,39 @@ permissions:
   id-token: write
 
 jobs:
-  deploy:
+  scrape-and-deploy:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      # Puppeteer needs Chromium system libraries
+      - name: Install system dependencies for Chromium
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            ca-certificates fonts-liberation \
+            libappindicator3-1 libasound2t64 libatk-bridge2.0-0 libatk1.0-0 \
+            libc6 libcairo2 libcups2 libdbus-1-3 libexpat1 libfontconfig1 \
+            libgbm1 libgcc1 libglib2.0-0 libgtk-3-0 libnspr4 libnss3 \
+            libpango-1.0-0 libpangocairo-1.0-0 libstdc++6 libx11-6 \
+            libx11-xcb1 libxcb1 libxcomposite1 libxcursor1 libxdamage1 \
+            libxext6 libxfixes3 libxi6 libxrandr2 libxrender1 libxss1 \
+            libxtst6 lsb-release wget xdg-utils
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Run scraper
+        env:
+          FRAMER_URL: https://breezy-founders-904817.framer.app/
+        run: node scripts/scrape.js
 
       - name: Add .nojekyll (disable Jekyll processing)
         run: touch dist/.nojekyll
@@ -31,5 +62,4 @@ jobs:
           publish_branch: gh-pages
           # Keep only the latest snapshot on gh-pages (no history bloat)
           force_orphan: true
-          # Optional: set a custom commit message
-          commit_message: "chore: deploy ${{ github.run_number }}"
+          commit_message: "chore: mirror update ${{ github.run_number }}"
