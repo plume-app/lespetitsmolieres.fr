@@ -118,4 +118,4 @@ import{t as e}from"./rolldown-runtime.CXBuSdYp.mjs";async function t(e,t,i){let 
 })();
 <\/script>
 `,id:`legacy-bodyEnd-abNSYDyGS`,loadMode:`once`,name:`Custom Code (Legacy)`,pageIds:new Set([`abNSYDyGS`]),placement:`bodyEnd`}],r={},i={bodyEnd:[`legacy-bodyEnd-Yl8xcI_Ds`,`legacy-bodyEnd-abNSYDyGS`,`AXORz3VmN`],bodyStart:[],headEnd:[],headStart:[`legacy-headStart`]},a={exports:{snippetsSorting:{type:`variable`,annotations:{framerContractVersion:`1`}},getSnippets:{type:`function`,annotations:{framerContractVersion:`1`}},__FramerMetadata__:{type:`variable`}}}}))();export{a as __FramerMetadata__,t as getSnippets,i as snippetsSorting};
-//# sourceMappingURL=eCZ2f-i4MCNT8h4LAL-CmjtGe15BeHyG49_mJXs_jnI.BV22d5Je.mjs.map
+//# sourceMappingURL=xTjS2x-SAC0KhTohDE-bbLrNSRwNuRSlutCDgzhtVEE.BR2NTgZ2.mjs.map

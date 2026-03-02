@@ -85,6 +85,24 @@ async function downloadAsset(url, destPath) {
   return true;
 }
 
+/**
+ * Remove Framer-injected runtime artifacts that only work on the original
+ * Framer domain and cause CSP errors when served from anywhere else:
+ *  - The editor-bar iframe  (<iframe id="__framer-editorbar" …>)
+ *  - framer.com script tags (edit/init.mjs, script?v=2, …)
+ */
+function removeFramerArtifacts(html) {
+  // Editor bar iframe — causes CSP errors outside framer.com
+  html = html.replace(/<iframe[^>]+id="__framer-editorbar"[^>]*>(\s*<\/iframe>)?/gis, "");
+  // <script src="…"> tags pointing to framer.com or events.framer.com (analytics / editor init)
+  html = html.replace(/<script\b[^>]*\bsrc="https:\/\/(?:[\w-]+\.)*framer\.com\/[^"]*"[^>]*>[\s\S]*?<\/script>/gi, "");
+  // Inline <script> blocks that dynamically load framer.com editor assets
+  html = html.replace(/<script\b[^>]*>[\s\S]*?framer\.com\/edit[^<]*<\/script>/gi, "");
+  // <link> preload/prefetch tags pointing to framer.com
+  html = html.replace(/<link\b[^>]+href="https:\/\/framer\.com\/[^"]*"[^>]*\/?>/gi, "");
+  return html;
+}
+
 /** HTML-decode a URL string (converts &amp; → & etc.) */
 function htmlDecode(str) {
   return str
@@ -296,6 +314,9 @@ async function main() {
     // Rewrite internal Framer site URLs to relative paths
     // e.g. https://breezy-founders-904817.framer.app/about → ../about (depth 1)
     html = html.replaceAll(BASE_ORIGIN + "/", prefix || "./");
+
+    // Strip Framer editor artifacts that cause CSP errors outside framer.com
+    html = removeFramerArtifacts(html);
 
     const outFile = urlPathToFile(urlPath);
     await fs.mkdir(path.dirname(outFile), { recursive: true });
