@@ -1,14 +1,7 @@
 name: Scrape & Deploy to GitHub Pages
 
 on:
-  # Run on every push to main
-  push:
-    branches: [master]
-  # Allow manual trigger from the Actions UI
   workflow_dispatch:
-  # Refresh the mirror daily at 03:00 UTC
-  schedule:
-    - cron: "0 3 * * *"
 
 # Grant the workflow write access to push to gh-pages
 permissions:

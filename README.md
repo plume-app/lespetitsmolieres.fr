@@ -2,9 +2,7 @@
 
 Static mirror of the Framer site, hosted on GitHub Pages.
 
-## Automatic deployment
-
-On every push to master the scraper is run and the `dist/` folder is committed and pushed to the `gh-pages` branch.
+## Deployment
 
 You can manually run the workflow from the Actions tab.
 
