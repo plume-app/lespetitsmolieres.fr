@@ -302,33 +302,79 @@ async function main() {
     }
   }
 
-  // ── Rewrite import paths inside downloaded JS modules ─────────────────────
-  // The .mjs files use relative imports like "./framer.D8flmtA6.mjs", but we
-  // saved them with a domain prefix (e.g. "framerusercontent_co__framer.D8flmtA6.mjs").
-  // Rewrite those bare basenames to their prefixed local filenames.
-  console.log("\n🔁  Rewriting module imports …");
-  const basenameToLocal = new Map();
-  for (const [url, filename] of urlToFilename) {
-    const basename = new URL(url).pathname.split("/").pop();
-    if (basename && basename !== filename) basenameToLocal.set(basename, filename);
+  // ── Crawl JS module dependency graph (catch lazily-imported bundles) ────────
+  // Some page bundles are never requested by Puppeteer (e.g. 404, alternate routes)
+  // but are referenced via dynamic import() inside script_main.mjs. Walk the graph
+  // so every import specifier has a local file to resolve to.
+  console.log("\n🔍  Scanning JS modules for undiscovered imports …");
+  // Regex matches all quote styles: "…", '…', `…`
+  const SPECIFIER_RE = /(?:from\s*|import\s*\(\s*)([`"'])([^`"'\n]+)\1/g;
+
+  const jsQueue = new Set(
+    [...urlToFilename.keys()].filter(u => /\.(mjs|js)(\?|$)/.test(u))
+  );
+  const jsProcessed = new Set();
+
+  while (jsQueue.size > 0) {
+    const [url] = jsQueue;
+    jsQueue.delete(url);
+    if (jsProcessed.has(url)) continue;
+    jsProcessed.add(url);
+
+    const filename = urlToFilename.get(url);
+    if (!filename) continue;
+    let src;
+    try { src = await fs.readFile(path.join(ASSETS_DIR, filename), "utf8"); } catch { continue; }
+
+    for (const [, , specifier] of src.matchAll(SPECIFIER_RE)) {
+      if (!specifier.startsWith("./") && !specifier.startsWith("../") &&
+          !specifier.startsWith("https://")) continue;
+      let resolved;
+      try { resolved = new URL(specifier, url).href; } catch { continue; }
+      if (urlToFilename.has(resolved) || !shouldDownload(resolved)) continue;
+
+      const newFilename = assetFilename(resolved);
+      const destPath = path.join(ASSETS_DIR, newFilename);
+      process.stdout.write(`  ↓ ${newFilename} (lazy) … `);
+      const ok = await downloadAsset(resolved, destPath);
+      if (ok) {
+        downloaded++;
+        urlToFilename.set(resolved, newFilename);
+        jsQueue.add(resolved); // scan this file's imports too
+        console.log("✓");
+      } else {
+        failed++;
+        console.log("✗");
+      }
+    }
   }
+
+  // ── Rewrite import paths inside every JS module ────────────────────────────
+  // Resolve each import specifier relative to the file's original CDN URL so the
+  // rewrite is stable regardless of filename changes between Framer deploys.
+  console.log("\n🔁  Rewriting module imports …");
+  const filenameToUrl = new Map([...urlToFilename].map(([u, f]) => [f, u]));
   let modulesRewritten = 0;
-  for (const filename of urlToFilename.values()) {
+
+  for (const [filename, originalUrl] of filenameToUrl) {
     if (!/\.(mjs|js)$/.test(filename)) continue;
     const filePath = path.join(ASSETS_DIR, filename);
     let src;
     try { src = await fs.readFile(filePath, "utf8"); } catch { continue; }
-    let out = src;
-    // Rewrite absolute CDN URLs that appear inside the module
-    for (const [url, localName] of urlToFilename) {
-      if (out.includes(url)) out = out.replaceAll(url, `./${localName}`);
-    }
-    // Rewrite relative bare-basename imports "./name.hash.mjs" → "./prefixed.mjs"
-    for (const [basename, localName] of basenameToLocal) {
-      out = out.replaceAll(`"./${basename}"`, `"./${localName}"`);
-      out = out.replaceAll(`'./${basename}'`, `'./${localName}'`);
-    }
-    if (out !== src) {
+
+    let changed = false;
+    const out = src.replace(SPECIFIER_RE, (match, quote, specifier) => {
+      if (!specifier.startsWith("./") && !specifier.startsWith("../") &&
+          !specifier.startsWith("https://")) return match;
+      let resolved;
+      try { resolved = new URL(specifier, originalUrl).href; } catch { return match; }
+      const localName = urlToFilename.get(resolved);
+      if (!localName) return match;
+      changed = true;
+      return match.replace(`${quote}${specifier}${quote}`, `${quote}./${localName}${quote}`);
+    });
+
+    if (changed) {
       await fs.writeFile(filePath, out, "utf8");
       modulesRewritten++;
     }
