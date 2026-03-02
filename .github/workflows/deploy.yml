@@ -3,7 +3,7 @@ name: Scrape & Deploy to GitHub Pages
 on:
   # Run on every push to main
   push:
-    branches: [main]
+    branches: [master]
   # Allow manual trigger from the Actions UI
   workflow_dispatch:
   # Refresh the mirror daily at 03:00 UTC
