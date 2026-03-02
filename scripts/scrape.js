@@ -268,6 +268,7 @@ async function main() {
     // Remove Framer editor UI elements from the DOM before serializing
     await page.evaluate(() => {
       document.getElementById("__framer-editorbar-container")?.remove();
+      document.getElementById("plume-cookie-banner")?.remove();
     });
 
     // Capture fully-rendered HTML and scan for any asset URLs not intercepted
