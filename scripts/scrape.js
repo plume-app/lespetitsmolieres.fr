@@ -100,6 +100,11 @@ function removeFramerArtifacts(html) {
   html = html.replace(/<script\b[^>]*>[\s\S]*?framer\.com\/edit[^<]*<\/script>/gi, "");
   // <link> preload/prefetch tags pointing to framer.com
   html = html.replace(/<link\b[^>]+href="https:\/\/framer\.com\/[^"]*"[^>]*\/?>/gi, "");
+  // Inject CSS to hide any Framer editor UI that JS may re-create at runtime
+  const hideFramerUi = `<style>
+#__framer-editorbar-container,a[href="https://www.framer.com"]{display:none!important}
+</style>`;
+  html = html.replace("</head>", hideFramerUi + "</head>");
   return html;
 }
 
