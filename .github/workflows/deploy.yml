@@ -53,6 +53,7 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./dist
           publish_branch: gh-pages
+          cname: lespetitsmolieres.fr
           # Keep only the latest snapshot on gh-pages (no history bloat)
           force_orphan: true
           commit_message: "chore: mirror update ${{ github.run_number }}"
