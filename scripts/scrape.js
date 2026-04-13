@@ -66,11 +66,26 @@ function shouldDownload(url) {
   }
 }
 
+/** Identify size-variant query params that produce distinct image bytes. */
+function sizeVariantTag(url) {
+  const { searchParams } = new URL(url);
+  const scale = searchParams.get("scale-down-to");
+  return scale ? `_s${scale}` : "";
+}
+
 /** Derive a stable, filesystem-safe filename from an asset URL. */
 function assetFilename(url) {
   const { pathname, hostname } = new URL(url);
   const basename = pathname.split("/").filter(Boolean).pop() || "asset";
   const domainTag = hostname.replace(/\./g, "_").slice(0, 20);
+  const variant = sizeVariantTag(url);
+  if (variant) {
+    const dot = basename.lastIndexOf(".");
+    const named = dot > 0
+      ? `${basename.slice(0, dot)}${variant}${basename.slice(dot)}`
+      : `${basename}${variant}`;
+    return `${domainTag}__${named}`;
+  }
   return `${domainTag}__${basename}`;
 }
 
@@ -390,6 +405,16 @@ async function main() {
   // ── Write HTML pages with rewritten URLs ───────────────────────────────────
   console.log("\n📝  Writing pages …");
 
+  // Build a pathname → filename index so we can rewrite URL variants that differ
+  // only by query string (e.g. srcset entries with ?scale-down-to=…).
+  const pathnameToFilename = new Map();
+  for (const [u, f] of urlToFilename) {
+    try {
+      const { hostname, pathname } = new URL(u);
+      pathnameToFilename.set(hostname + pathname + sizeVariantTag(u), f);
+    } catch {}
+  }
+
   for (const [urlPath, rawHtml] of pageHtmlMap) {
     const depth = pathDepth(urlPath);
     const prefix = toRootPrefix(depth);
@@ -400,6 +425,20 @@ async function main() {
     for (const [originalUrl, filename] of urlToFilename) {
       html = rewriteUrl(html, originalUrl, `${prefix}assets/${filename}`);
     }
+
+    // Catch any remaining framer CDN URLs (srcset variants with query strings,
+    // URLs not seen during crawl, etc.) by matching on pathname.
+    html = html.replace(HTML_URL_RE, (match) => {
+      const decoded = htmlDecode(match);
+      try {
+        const { hostname, pathname } = new URL(decoded);
+        const key = hostname + pathname + sizeVariantTag(decoded);
+        const filename = pathnameToFilename.get(key) || pathnameToFilename.get(hostname + pathname);
+        return filename ? `${prefix}assets/${filename}` : match;
+      } catch {
+        return match;
+      }
+    });
 
     // Rewrite internal Framer site URLs to relative paths
     // e.g. https://breezy-founders-904817.framer.app/about → ../about (depth 1)
