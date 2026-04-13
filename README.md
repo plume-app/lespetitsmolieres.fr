@@ -17,3 +17,12 @@ FRAMER_URL=https://breezy-founders-904817.framer.app/ npm run scrape
 ```
 
 Then commit `dist/` and push.
+
+## Test locally
+
+Serve the generated `dist/` over HTTP (don't open via `file://` — ES modules won't load):
+
+```bash
+npx serve dist
+```
+

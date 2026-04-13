@@ -280,20 +280,24 @@ async function main() {
     }
     console.log(`    🔗  Found ${links.length} link(s), queue: ${queue.length}`);
 
-    // Remove Framer editor UI elements from the DOM before serializing
-    await page.evaluate(() => {
-      document.getElementById("__framer-editorbar-container")?.remove();
-      document.getElementById("plume-cookie-banner")?.remove();
-    });
-
-    // Capture fully-rendered HTML and scan for any asset URLs not intercepted
-    let html = await page.content();
-    for (const match of html.matchAll(HTML_URL_RE)) {
+    // Scan the live DOM for asset URLs (srcset, style backgrounds, etc.) not
+    // caught by request interception.
+    const domHtml = await page.content();
+    for (const match of domHtml.matchAll(HTML_URL_RE)) {
       assetUrls.add(htmlDecode(match[0]));
     }
 
-    pageHtmlMap.set(urlPath, html);
     await page.close();
+
+    // Fetch the raw SSR HTML directly (no JS execution, no DOM mutation) so
+    // that React hydration on the mirror matches exactly what Framer served.
+    const ssrRes = await fetch(url);
+    let ssrHtml = await ssrRes.text();
+    for (const match of ssrHtml.matchAll(HTML_URL_RE)) {
+      assetUrls.add(htmlDecode(match[0]));
+    }
+
+    pageHtmlMap.set(urlPath, ssrHtml);
   }
 
   await browser.close();
