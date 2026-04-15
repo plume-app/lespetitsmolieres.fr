@@ -234,9 +234,12 @@ async function main() {
   // Shared asset tracking across all pages
   const assetUrls = new Set();
 
-  // BFS crawl queue — keyed by normalized URL path to avoid duplicates
+  // BFS crawl queue — keyed by normalized URL path to avoid duplicates.
+  // Seed with the root plus any pages not reachable via <a href> from the home
+  // page (e.g. the 404 page, or routes only linked from forms/buttons).
+  const SEED_PATHS = ["/", "/inscription-ceremonie", "/404"];
   const visited = new Set();
-  const queue = [BASE_ORIGIN + "/"];
+  const queue = SEED_PATHS.map((p) => BASE_ORIGIN + p);
 
   // HTML content per page: Map<normalizedPath, htmlString>
   const pageHtmlMap = new Map();
@@ -455,6 +458,16 @@ async function main() {
     await fs.mkdir(path.dirname(outFile), { recursive: true });
     await fs.writeFile(outFile, html, "utf8");
     console.log(`    ✅  ${urlPath} → ${path.relative(DIST_DIR, outFile)}`);
+  }
+
+  // GitHub Pages serves dist/404.html for any unmatched path. Copy the crawled
+  // /404 page there (depth-0 asset paths are already correct for root serving).
+  const notFoundSrc = path.join(DIST_DIR, "404", "index.html");
+  try {
+    await fs.copyFile(notFoundSrc, path.join(DIST_DIR, "404.html"));
+    console.log("    ✅  404.html written for GitHub Pages");
+  } catch {
+    console.warn("    ⚠️  no /404 page crawled — skipping 404.html");
   }
 
   console.log("\n✅  Done!");
