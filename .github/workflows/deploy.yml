@@ -44,6 +44,9 @@ jobs:
           FRAMER_URL: https://breezy-founders-904817.framer.app/
         run: node scripts/scrape.js
 
+      - name: Check internal links (fail before deploying a broken mirror)
+        run: node scripts/check-links.js
+
       - name: Add .nojekyll (disable Jekyll processing)
         run: touch dist/.nojekyll
 

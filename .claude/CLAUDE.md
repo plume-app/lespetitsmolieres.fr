@@ -12,9 +12,11 @@ A Puppeteer scraper crawls the live Framer site, downloads all assets locally, r
 
 ```
 scripts/scrape.js          — The scraper (the only real source code)
-dist/                      — Generated output; committed and deployed as-is
+scripts/check-links.js     — Link checker using GitHub Pages URL semantics (runs in CI)
+dist/                      — Generated output; deployed as-is
   index.html               — Home page
-  <page>/index.html        — One file per crawled route
+  <page>.html              — One flat file per crawled route (NOT <page>/index.html, see gotchas)
+  404.html                 — Crawled /404 page, served by GitHub Pages for unmatched paths
   assets/                  — All downloaded assets (images, fonts, JS modules)
 .github/workflows/deploy.yml — CI: scrape + deploy to gh-pages daily
 ```
@@ -54,7 +56,8 @@ CI also runs the scraper automatically on every push to `master` and on a daily 
 
 - **Asset naming**: `{domainTag}__{basename}` (e.g. `framerusercontent_co__react.CdOXKDY6.mjs`) avoids collisions across CDN domains
 - **Import rewriting uses URL resolution**, not basename matching — resolves each specifier relative to the file's original CDN URL, then looks up in the `url→filename` map. This is robust to Framer content-hash changes
-- **Relative asset paths are depth-aware**: root page uses `assets/foo`, `/about/index.html` uses `../assets/foo`, etc.
+- **Flat page files**: `/about` is written as `dist/about.html`, served by GitHub Pages at `/about` with no redirect
+- **Relative asset paths are depth-aware**: `/` and `/about` use `assets/foo`, `/blog/post` uses `../assets/foo`, etc.
 
 ---
 
@@ -68,8 +71,9 @@ Steps:
 3. Install Chromium system deps (Ubuntu 24.04 — uses `libasound2t64`, not `libasound2`)
 4. `npm ci`
 5. `node scripts/scrape.js`
-6. `touch dist/.nojekyll`
-7. Deploy `dist/` to `gh-pages` branch via `peaceiris/actions-gh-pages`
+6. `node scripts/check-links.js` — fails the deploy on any broken internal link
+7. `touch dist/.nojekyll`
+8. Deploy `dist/` to `gh-pages` branch via `peaceiris/actions-gh-pages`
 
 ---
 
@@ -78,6 +82,7 @@ Steps:
 | Task | Command |
 |------|---------|
 | Run scraper locally | `FRAMER_URL=https://breezy-founders-904817.framer.app/ npm run scrape` |
+| Check internal links | `npm run check-links` |
 | Check GitHub Pages URL | `https://plume-app.github.io/lespetitsmolieres.fr` |
 
 ## Known gotchas
@@ -85,4 +90,5 @@ Steps:
 - **`libasound2` vs `libasound2t64`**: Ubuntu 24.04 renamed the package; the workflow uses `libasound2t64`
 - **Framer editor bar**: injected as `#__framer-editorbar-container` and an iframe at runtime — removed in DOM before HTML capture and also hidden via CSS
 - **Lazy page bundles**: Framer's `script_main.mjs` dynamically imports page bundles for routes not visited during crawl (404, old routes) — the JS dependency crawler handles these
+- **Never write pages as `<page>/index.html`**: GitHub Pages 301-redirects `/parents` → `/parents/`, and Framer's SSR links are relative (`./redirections`), so they resolve to `/parents/redirections` → Framer 404 ("Oups Molière n'est pas là"). Framer's JS rewrites hrefs to absolute after hydration, so the bug only shows before hydration / without JS — and in new tabs (`target="_blank"` CTAs). Flat files avoid the redirect. `404.html` redirects legacy trailing-slash URLs (`/parents/` → `/parents`)
 - **Template literal imports**: Framer uses `` import(`./foo.mjs`) `` in addition to `import("./foo.mjs")` — the rewriter handles all three quote styles

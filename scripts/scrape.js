@@ -8,7 +8,7 @@
  *  3. Intercepts every asset request (JS, CSS, fonts, images, …)
  *  4. Downloads Framer-hosted assets into dist/assets/<hash-basename>
  *  5. Rewrites absolute framer/framerusercontent URLs to depth-correct relative paths
- *  6. Writes each page to dist/<path>/index.html
+ *  6. Writes each page to dist/<path>.html (flat files, see urlPathToFile)
  *
  * Usage:
  *   node scripts/scrape.js [URL]
@@ -155,21 +155,33 @@ function pathDepth(urlPath) {
 }
 
 /** Relative prefix to reach dist root from a page at given depth.
- *  depth 0 → ""  (root index.html)
- *  depth 1 → "../"  (/about/index.html)
- *  depth 2 → "../../"  (/blog/post/index.html)
+ *  Pages are flat files served without a trailing slash, so the browser's base
+ *  directory is the page's parent:
+ *  depth 0 → ""     (/            → index.html)
+ *  depth 1 → ""     (/about       → about.html)
+ *  depth 2 → "../"  (/blog/post   → blog/post.html)
  */
 function toRootPrefix(depth) {
-  return depth > 0 ? "../".repeat(depth) : "";
+  return depth > 1 ? "../".repeat(depth - 1) : "";
 }
 
-/** Convert a URL path to its output file path under dist/. */
+/** Convert a URL path to its output file path under dist/.
+ *
+ *  Pages are written as flat files (/about → about.html), NOT about/index.html:
+ *  GitHub Pages 301-redirects a directory URL /about to /about/, which breaks
+ *  the relative links Framer emits (href="./parents" would resolve to
+ *  /about/parents → 404). about.html is served at /about with no redirect.
+ */
 function urlPathToFile(urlPath) {
   const segments = urlPath.split("/").filter(Boolean);
-  return segments.length === 0
-    ? path.join(DIST_DIR, "index.html")
-    : path.join(DIST_DIR, ...segments, "index.html");
+  if (segments.length === 0) return path.join(DIST_DIR, "index.html");
+  const last = segments.pop();
+  return path.join(DIST_DIR, ...segments, `${last}.html`);
 }
+
+/** Inline script for 404.html: old/bookmarked URLs with a trailing slash
+ *  (/parents/, from the former directory layout) redirect to /parents. */
+const TRAILING_SLASH_REDIRECT = `<script>(function(){var p=location.pathname;if(p.length>1&&p.slice(-1)==="/"){location.replace(p.replace(/\\/+$/,"")+location.search+location.hash);}})();</script>`;
 
 /**
  * Scroll the page incrementally to the bottom to trigger lazy-loaded content,
@@ -454,20 +466,19 @@ async function main() {
     // Strip Framer editor artifacts that cause CSP errors outside framer.com
     html = removeFramerArtifacts(html);
 
+    // /404 → dist/404.html, which GitHub Pages serves for any unmatched path.
+    if (urlPath === "/404") {
+      html = html.replace(/<head\b[^>]*>/i, (m) => m + TRAILING_SLASH_REDIRECT);
+    }
+
     const outFile = urlPathToFile(urlPath);
     await fs.mkdir(path.dirname(outFile), { recursive: true });
     await fs.writeFile(outFile, html, "utf8");
     console.log(`    ✅  ${urlPath} → ${path.relative(DIST_DIR, outFile)}`);
   }
 
-  // GitHub Pages serves dist/404.html for any unmatched path. Copy the crawled
-  // /404 page there (depth-0 asset paths are already correct for root serving).
-  const notFoundSrc = path.join(DIST_DIR, "404", "index.html");
-  try {
-    await fs.copyFile(notFoundSrc, path.join(DIST_DIR, "404.html"));
-    console.log("    ✅  404.html written for GitHub Pages");
-  } catch {
-    console.warn("    ⚠️  no /404 page crawled — skipping 404.html");
+  if (!pageHtmlMap.has("/404")) {
+    console.warn("    ⚠️  no /404 page crawled — GitHub Pages will use its default 404");
   }
 
   console.log("\n✅  Done!");
