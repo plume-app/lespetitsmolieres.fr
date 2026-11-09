@@ -18,23 +18,28 @@ dist/                      — Generated output; deployed as-is
   <page>.html              — One flat file per crawled route (NOT <page>/index.html, see gotchas)
   404.html                 — Crawled /404 page, served by GitHub Pages for unmatched paths
   assets/                  — All downloaded assets (images, fonts, JS modules)
-.github/workflows/deploy.yml — CI: scrape + deploy to gh-pages daily
+.github/workflows/deploy.yml — CI: scrape + check links + deploy to gh-pages (manual trigger)
 ```
 
 ---
 
 ## How to update the site
 
-Run the scraper locally, then commit and push `dist/`:
+Deployment is **manual**: pushing to `master` does NOT deploy. Trigger the workflow, which scrapes the live Framer site in CI and publishes to `gh-pages`:
+
+```bash
+gh workflow run deploy.yml --ref master
+gh run watch $(gh run list --workflow deploy.yml --limit 1 --json databaseId -q '.[0].databaseId')
+```
+
+(or "Run workflow" in the GitHub Actions tab). Run it after editing the Framer site, or after pushing scraper changes.
+
+`dist/` is gitignored — it's a local build output, not committed. To preview locally:
 
 ```bash
 FRAMER_URL=https://breezy-founders-904817.framer.app/ npm run scrape
-git add dist/
-git commit -m "chore: mirror update"
-git push
+npm run check-links
 ```
-
-CI also runs the scraper automatically on every push to `master` and on a daily schedule (03:00 UTC).
 
 ---
 
@@ -63,7 +68,7 @@ CI also runs the scraper automatically on every push to `master` and on a daily 
 
 ## CI workflow (.github/workflows/deploy.yml)
 
-Triggers: push to `master`, manual dispatch, daily cron at 03:00 UTC.
+Trigger: manual dispatch only (`workflow_dispatch`) — no push or cron trigger.
 
 Steps:
 1. Checkout
